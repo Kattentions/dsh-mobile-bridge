@@ -53,6 +53,36 @@ function loadBridgeKey() {
 
 const BRIDGE_KEY = loadBridgeKey();
 
+/** Devices seen through the bridge, keyed by address + user agent. Memory only. */
+const BRIDGE_DEVICES = new Map();
+const DEVICE_LIMIT = 10;
+
+/**
+ * Remember who is connected for the "设备互联" settings page. Best effort: a
+ * failure here must never break the proxy.
+ * @param {object} request - incoming request.
+ */
+function recordDevice(request) {
+  try {
+    const ip = String((request.socket && request.socket.remoteAddress) || '').replace(/^::ffff:/, '');
+    if (ip === '') return;
+    const ua = String(request.headers['user-agent'] || '').slice(0, 180);
+    const key = ip + '|' + ua;
+    const now = Date.now();
+    const entry = BRIDGE_DEVICES.get(key);
+    if (entry !== undefined) {
+      entry.lastAt = now;
+      entry.count += 1;
+    } else {
+      BRIDGE_DEVICES.set(key, { ip, ua, firstAt: now, lastAt: now, count: 1 });
+    }
+    if (BRIDGE_DEVICES.size > DEVICE_LIMIT * 2) {
+      const ordered = [...BRIDGE_DEVICES.entries()].sort((a, b) => a[1].lastAt - b[1].lastAt);
+      for (const [stale] of ordered.slice(0, ordered.length - DEVICE_LIMIT)) BRIDGE_DEVICES.delete(stale);
+    }
+  } catch (error) { /* tracking only */ }
+}
+
 /** The index tap only exists when the page is served over HTTP. */
 export const inject = ['webServer'];
 
@@ -396,6 +426,7 @@ function startMobileBridge(inner) {
       return;
     }
     if (url.searchParams.get('k') === BRIDGE_KEY) {
+      recordDevice(request);
       const rest = new URLSearchParams(url.searchParams);
       rest.delete('k');
       const query = rest.toString();
@@ -407,6 +438,7 @@ function startMobileBridge(inner) {
       response.end();
       return;
     }
+    recordDevice(request);
     forward(request, response, false).catch((error) => {
       try {
         if (!response.headersSent) response.writeHead(502, { 'content-type': 'text/plain; charset=utf-8' });
@@ -929,10 +961,17 @@ function pairState() {
   const key = state && typeof state.key === 'string' ? state.key : '';
   const addresses = port && key ? reachableAddresses() : [];
   const usable = addresses.filter((entry) => entry && typeof entry.address === 'string');
+  const devices = [...BRIDGE_DEVICES.values()]
+    .sort((a, b) => b.lastAt - a.lastAt)
+    .slice(0, DEVICE_LIMIT);
+  let app = null;
+  try { app = readAppMeta(); } catch (error) { /* APK not built yet */ }
   return {
     listening: Boolean(port && key),
     port,
     key,
+    devices,
+    app,
     networks: usable.map((entry, index) => {
       const url = 'http://' + entry.address + ':' + port + '/?k=' + key;
       /* The app tries u first and falls back to u2, so a phone that is on Wi-Fi

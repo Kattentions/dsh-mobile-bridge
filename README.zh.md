@@ -15,6 +15,20 @@ DeepSeek Harness 手机桥：让同一局域网（或蒲公英/Tailscale 这类�
 - APK 下载页和版本清单，手机 App 可据此检查更新
 - 完成事件通知流，手机壳轮询后弹系统通知
 
+## 设置里的「设备互联」
+
+装好后 DSH 设置里会多一页**设备互联**（左下角账号菜单 → 设置，或 `Ctrl+,`）：
+
+- 桥的运行状态和端口
+- 配对二维码，手机 App 直接扫
+- 每个网络接口的连接地址，一键复制带密钥的链接
+- 手机 App 下载入口和当前版本
+- 最近连接过的设备：IP、设备类型、最后活动时间
+
+![设备互联](docs/device-connections.png)
+
+设备列表只记录通过桥访问过的客户端，用来确认「到底是谁在用」；真正撤销某台设备目前还是整把换 key（删掉 key 文件重启 DSH）。
+
 ## 安装
 
 ```sh
@@ -22,7 +36,7 @@ DeepSeek Harness 手机桥：让同一局域网（或蒲公英/Tailscale 这类�
 dsh plugin --profile desktop add dsh-mobile-bridge
 
 # Release 压缩包，不需要 git
-dsh plugin --profile desktop add https://github.com/Kattentions/dsh-mobile-bridge/releases/download/v0.1.0/dsh-mobile-bridge-0.1.0.tgz
+dsh plugin --profile desktop add https://github.com/Kattentions/dsh-mobile-bridge/releases/download/v0.2.0/dsh-mobile-bridge-0.2.0.tgz
 ```
 
 装完重启 DSH，然后打开配对页：

@@ -15,6 +15,20 @@ The desktop DSH GUI listens on `127.0.0.1` only, and every document request carr
 - serves the APK download page and version manifest so the phone shell can check for updates
 - publishes turn-end events the phone shell polls for system notifications
 
+## Device connections, inside Settings
+
+Once installed, DSH settings gains a **设备互联 (Device connections)** page (account menu at the sidebar foot → Settings, or `Ctrl+,`):
+
+- bridge status and port
+- the pairing QR code, ready for the phone app
+- every network interface with a one-click copy of the key link
+- the phone app download entry and its current version
+- recently connected clients: address, device kind, last activity
+
+![Device connections](docs/device-connections.png)
+
+The device list only records clients that went through the bridge, so you can tell who is using it; real per-device revocation still means rotating the key (delete the key file and restart DSH).
+
 ## Install
 
 ```sh
@@ -22,7 +36,7 @@ The desktop DSH GUI listens on `127.0.0.1` only, and every document request carr
 dsh plugin --profile desktop add dsh-mobile-bridge
 
 # release tarball, no git required
-dsh plugin --profile desktop add https://github.com/Kattentions/dsh-mobile-bridge/releases/download/v0.1.0/dsh-mobile-bridge-0.1.0.tgz
+dsh plugin --profile desktop add https://github.com/Kattentions/dsh-mobile-bridge/releases/download/v0.2.0/dsh-mobile-bridge-0.2.0.tgz
 ```
 
 Restart DSH, then open the pairing page:
