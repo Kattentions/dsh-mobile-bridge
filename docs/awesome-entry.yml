@@ -1,0 +1,6 @@
+url: https://github.com/Kattentions/dsh-mobile-bridge
+name: Kattentions/dsh-mobile-bridge
+category: remote
+description:
+  en: "LAN bridge for DeepSeek Harness: QR pairing, a cookie-isolated GUI proxy, the companion Android shell's APK download page, and a turn-end notification stream for phones."
+  zh: "DeepSeek Harness 的局域网手机桥：扫码配对、隔离 Cookie 的 GUI 代理、配套 Android 壳的 APK 下载页，以及给手机用的完成事件通知流。"
