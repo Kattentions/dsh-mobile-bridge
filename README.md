@@ -29,6 +29,26 @@ Once installed, DSH settings gains a **设备互联 (Device connections)** page 
 
 The device list only records clients that went through the bridge, so you can tell who is using it; real per-device revocation still means rotating the key (delete the key file and restart DSH).
 
+## Easiest install
+
+Works right after installation: no launch flags, no configuration.
+
+1. In DSH open **Plugins → Discover → Index sources** and add:
+
+   ```
+   https://cdn.jsdelivr.net/gh/Kattentions/dsh-katt-browser@main/index.json
+   ```
+
+   The source includes this bridge (and the sidebar browser); press Install.
+2. Restart DSH.
+3. Ask the agent to open a page. If the right sidebar was never opened, the first action expands it automatically.
+
+Command line equivalent (no git):
+
+```sh
+dsh plugin --profile desktop add https://cdn.jsdelivr.net/gh/Kattentions/dsh-katt-browser@main/dist/dsh-mobile-bridge-latest.tgz
+```
+
 ## Install
 
 ```sh

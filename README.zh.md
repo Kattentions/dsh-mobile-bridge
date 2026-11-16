@@ -29,6 +29,26 @@ DeepSeek Harness 手机桥：让同一局域网（或蒲公英/Tailscale 这类�
 
 设备列表只记录通过桥访问过的客户端，用来确认「到底是谁在用」；真正撤销某台设备目前还是整把换 key（删掉 key 文件重启 DSH）。
 
+## 最省事的安装
+
+装完就能用：不用加启动参数，不用改配置。
+
+1. DSH 里打开 **插件 → 发现 → 索引源**，加上这个地址：
+
+   ```
+   https://cdn.jsdelivr.net/gh/Kattentions/dsh-katt-browser@main/index.json
+   ```
+
+   这个源里包含手机桥（和侧栏浏览器），点「安装」即可。
+2. 装完重启 DSH。
+3. 直接让 agent 打开网页即可；右侧栏没开、甚至没打开过浏览器标签页，第一次操作会自动展开。
+
+命令行等价（不需要 git）：
+
+```sh
+dsh plugin --profile desktop add https://cdn.jsdelivr.net/gh/Kattentions/dsh-katt-browser@main/dist/dsh-mobile-bridge-latest.tgz
+```
+
 ## 安装
 
 ```sh
