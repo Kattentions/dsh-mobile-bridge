@@ -1,5 +1,10 @@
 # 变更记录
 
+## 0.4.12
+
+- `package.json` 补 `main: index.js` 与 `engines.node >= 20`（宿主侧用到全局 fetch/WebSocket）。
+- 不加 `engines.dsh`：DSH 核心版本没有可靠对外暴露，官方插件用精确 peerDependencies 锁 rc 版本，照抄会把升级拦死。
+- 本版本无运行时行为改动；重载后桥继续正常提供配对/通知/命令接口。
 ## 0.4.11
 
 - `check-endpoints` 找安卓源码时改成探测三个常见布局（工作区同级、插件上级、插件内），都找不到就打印「Android sources not found (3 locations checked) — skipped」，不再拼出一个怪路径。
