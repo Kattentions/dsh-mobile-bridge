@@ -16,7 +16,14 @@ import { fileURLToPath } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
 const bridgeSource = readFileSync(path.join(root, 'index.js'), 'utf8');
-const appDir = path.resolve(root, '..', '..', '_android', 'apk', 'src', 'ink', 'dsh', 'harness');
+/* Android sources live next to the plugin in the workspace: now try the known
+   layouts instead of assuming one, so an installed package can skip cleanly. */
+const appCandidates = [
+  path.resolve(root, '..', '..', '_android', 'apk', 'src', 'ink', 'dsh', 'harness'),
+  path.resolve(root, '..', '_android', 'apk', 'src', 'ink', 'dsh', 'harness'),
+  path.resolve(root, '_android', 'apk', 'src', 'ink', 'dsh', 'harness'),
+];
+const appDir = appCandidates.find((candidate) => existsSync(candidate)) || appCandidates[0];
 
 /** Route paths registered by the bridge plugin. */
 function registeredRoutes(source) {
@@ -44,7 +51,7 @@ console.log('bridge registers ' + routes.size + ' routes:');
 for (const route of [...routes].sort()) console.log('  ' + route);
 
 if (references === null) {
-  console.log('\nAndroid sources not found at ' + appDir + ' — skipped app-side comparison.');
+  console.log('\nAndroid sources not found (' + appCandidates.length + ' locations checked) — skipped app-side comparison.');
   process.exit(0);
 }
 

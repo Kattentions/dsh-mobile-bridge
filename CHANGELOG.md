@@ -1,5 +1,9 @@
 # 变更记录
 
+## 0.4.11
+
+- `check-endpoints` 找安卓源码时改成探测三个常见布局（工作区同级、插件上级、插件内），都找不到就打印「Android sources not found (3 locations checked) — skipped」，不再拼出一个怪路径。
+- 实测：仓库内正常运行并对比；把 npm 包解压到临时目录后运行，干净跳过，退出码 0。
 ## 0.4.10
 
 - 打包修正：`scripts/check-endpoints.mjs` 和 `scripts/check-app.mjs` 之前没进 npm 包，README 里的 `npm run check` 从 npm 装就找不到脚本。现在 `files` 加了 `scripts/**`；解包实测两个检查都能跑（没有安卓源码时端点检查会打印跳过而不是报错）。
