@@ -207,6 +207,25 @@ const WS_ALLOW_PREFIXES = ['/api/', '/sidebar/', '/__', '/favicon', '/assets/', 
 const WS_STATS = new Map();
 const WS_DENIED = new Map();
 
+/** Queued phone commands (agent -> app). Memory only: a restart drops them. */
+const PHONE_QUEUE = [];
+const PHONE_RESULTS = [];
+let PHONE_SEQ = 0;
+
+function enqueuePhoneCommand(type, title, text) {
+  PHONE_SEQ += 1;
+  const command = {
+    id: 'p' + PHONE_SEQ.toString(36) + randomBytes(3).toString('hex'),
+    type: String(type || 'notify'),
+    title: String(title || 'DSH'),
+    text: String(text || ''),
+    createdAt: Date.now(),
+  };
+  PHONE_QUEUE.push(command);
+  if (PHONE_QUEUE.length > 50) PHONE_QUEUE.shift();
+  return command;
+}
+
 function bumpCounter(map, key) {
   map.set(key, (map.get(key) || 0) + 1);
   if (map.size > 64) {
@@ -216,12 +235,45 @@ function bumpCounter(map, key) {
 }
 
 /** The index tap only exists when the page is served over HTTP. */
-export const inject = ['webServer'];
+export const inject = ['webServer', 'tools'];
 
 /**
  * @param {import('@deepseek-ai/cordis').Context} ctx - host context.
  */
 export function apply(ctx) {
+
+
+  /* Agent -> phone. The app polls these when it is alive; a command that is never
+     delivered simply expires with the process, so nothing pretends to succeed. */
+  ctx.inject(['tools'], (toolsInner) => {
+    const textRender = (value) => [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value, null, 2) }];
+    const output = { schema: { type: 'object' }, render: (_args, value) => textRender(value) };
+    const schema = (properties, required = []) => ({ type: 'object', properties, required, additionalProperties: false });
+    toolsInner.tools.register({
+      name: 'phone_notify',
+      description: '给已配对的手机发一条系统通知。手机上要装 DSH 手机壳并且 App 在后台保持连接；只排队、不保证送达。',
+      parameters: schema({
+        title: { type: 'string', description: '通知标题，例如「DSH 任务完成」' },
+        text: { type: 'string', description: '通知正文，一两句话' },
+      }, ['title']),
+      output,
+      execute: async (args) => {
+        const command = enqueuePhoneCommand('notify', args && args.title, args && args.text);
+        return { ok: true, queued: true, id: command.id, pending: PHONE_QUEUE.length };
+      },
+    });
+    toolsInner.tools.register({
+      name: 'phone_state',
+      description: '看手机命令队列的状态：还没被取走的命令数，以及最近一次手机回执。',
+      parameters: schema({}),
+      output,
+      execute: async () => ({
+        pending: PHONE_QUEUE.length,
+        commands: PHONE_QUEUE.slice(-5),
+        results: PHONE_RESULTS.slice(-5),
+      }),
+    });
+  });
   ctx.inject(['webServer'], (inner) => {
     /* Liveness probe used while wiring the pairing page: answers without
        touching the UI, so a stale host build is obvious from curl. */
@@ -308,11 +360,17 @@ export function apply(ctx) {
         const minted = mintPairCode();
         let state = null;
         try { state = pairState(); } catch (error) { /* bridge down */ }
-        const networks = state && Array.isArray(state.networks) ? state.networks.map((entry) => ({
-          name: entry.name,
-          address: entry.address,
-          url: 'http://' + entry.address + ':' + (state.port || 0) + '/pair?c=' + minted.code,
-        })) : [];
+        const networks = state && Array.isArray(state.networks) ? state.networks.map((entry, index, all) => {
+          const url = 'http://' + entry.address + ':' + (state.port || 0) + '/pair?c=' + minted.code;
+          const other = all.find((candidate, candidateIndex) => candidateIndex !== index && candidate && candidate.address);
+          const fallback = other ? '&u2=' + encodeURIComponent('http://' + other.address + ':' + (state.port || 0) + '/pair?c=' + minted.code) : '';
+          return {
+            name: entry.name,
+            address: entry.address,
+            url,
+            deep: 'dshharness://pair?u=' + encodeURIComponent(url) + fallback,
+          };
+        }) : [];
         response.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
         response.end(JSON.stringify({ code: minted.code, expiresAt: minted.expiresAt, ttlMs: PAIR_CODE_TTL_MS, networks }));
       }
@@ -343,6 +401,44 @@ export function apply(ctx) {
           const removed = id !== '' && revokeDevice(id);
           response.writeHead(removed ? 200 : 404, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
           response.end(JSON.stringify({ ok: removed, id }));
+        });
+      }
+    }));
+    /* Agent -> phone command channel. The shell polls, executes and reports back;
+       commands stay in memory so a restart simply drops what was never delivered. */
+    inner.effect(() => inner.webServer.register({
+      kind: 'exact',
+      path: '/__ink/phone/pull',
+      handler: (request, response) => {
+        const commands = PHONE_QUEUE.splice(0, 10);
+        response.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+        response.end(JSON.stringify({ commands }));
+      }
+    }));
+    inner.effect(() => inner.webServer.register({
+      kind: 'exact',
+      path: '/__ink/phone/result',
+      handler: (request, response) => {
+        if (request.method !== 'POST') {
+          response.writeHead(405, { 'content-type': 'application/json; charset=utf-8', 'allow': 'POST' });
+          response.end(JSON.stringify({ error: 'method-not-allowed' }));
+          return;
+        }
+        const chunks = [];
+        request.on('data', (chunk) => { if (chunks.length < 16) chunks.push(chunk); });
+        request.on('end', () => {
+          try {
+            const parsed = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+            PHONE_RESULTS.push({
+              id: String(parsed && parsed.id || ''),
+              ok: Boolean(parsed && parsed.ok),
+              detail: String(parsed && parsed.detail || '').slice(0, 200),
+              at: Date.now(),
+            });
+            if (PHONE_RESULTS.length > 50) PHONE_RESULTS.shift();
+          } catch (error) { /* malformed receipt */ }
+          response.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+          response.end(JSON.stringify({ ok: true }));
         });
       }
     }));

@@ -135,7 +135,9 @@ window.__ModuleLoader__.load({
       /* Prefer a freshly minted pairing URL: the phone redeems it once for its own
          device token. The deep link with the master key stays as a fallback. */
       const pairNetwork = pairing && Array.isArray(pairing.networks) ? pairing.networks.find((entry) => entry && entry.url) : null;
-      const qrPayload = pairNetwork && pairNetwork.url ? pairNetwork.url : (first && first.deep ? first.deep : '');
+      const qrPayload = pairNetwork && (pairNetwork.deep || pairNetwork.url)
+        ? (pairNetwork.deep || pairNetwork.url)
+        : (first && first.deep ? first.deep : '');
       const qr = qrPayload !== ''
         ? './__ink/pair/qr?d=' + encodeURIComponent(qrPayload)
         : '';

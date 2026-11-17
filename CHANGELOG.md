@@ -1,5 +1,10 @@
 # 变更记录
 
+## 0.4.0
+
+- 手机能力反向暴露：新增 agent 工具 `phone_notify` / `phone_state`，命令经 `/__ink/phone/pull|result` 排队，App 的后台轮询取走并执行，执行完回执。
+- 配对二维码改发 `dshharness://pair` 深链（内含 `/pair?c=` 一次性码，两条网络互为 fallback），App 扫码后直接进配对流程。
+- 手机壳 3.0（versionCode 21）：后台服务同时轮询手机命令；配对成功后把已消费的 `?c=` 地址换成干净 origin，避免下次启动拿旧码反复 401。
 ## 0.3.0
 
 - 设备 token 化：桌面设置页可生成 6 位一次性配对码（2 分钟、一次有效），手机访问 `/pair?c=CODE` 换一枚 32 字节设备 token（HttpOnly cookie，服务端只存 SHA-256）；每个设备可单独撤销。
