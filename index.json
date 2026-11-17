@@ -50,7 +50,7 @@
           "source": {
             "type": "git",
             "url": "https://github.com/Kattentions/dsh-mobile-bridge.git",
-            "commit": "PENDING"
+            "commit": "3e4190ffd158ffe638f9e647fe4aa70a188c9a4b"
           }
         }
       ]
