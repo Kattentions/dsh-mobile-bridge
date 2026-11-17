@@ -1,5 +1,14 @@
 # 变更记录
 
+## 0.4.16
+
+- `prepare-release` 同步升级（与 katt-browser 0.9.67 同一份）：
+  - 幂等：用当前版本重跑不会重置 index commit；
+  - 内置一致性自检，package/index 不一致直接退出 1；
+  - 结尾提示改成「先 commit release → 再 market 提交填 commit → tag 后续提交」。
+- 背景：0.4.15 是我手工只 bump package、漏了 index 版本，tag 里索引写成 0.4.14。以后 bridge 发布必须走 `npm run prepare-release -- <版本>`。
+
+
 ## 0.4.15
 
 - 新增真机隔离探针 `scripts/probe-devices.mjs`（`npm run probe:devices`）：在运行中的桥上半自动配对两台临时设备，验证「各自都能拉命令」「撤销 A 后 A 立即 401、B 继续 200」「设备列表只剩 B」，最后撤销自己创建的设备并清空手机队列。不碰真实配对的手机。
