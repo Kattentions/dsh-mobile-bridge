@@ -45,7 +45,7 @@
       "category": "remote",
       "versions": [
         {
-          "version": "0.4.14",
+          "version": "0.4.15",
           "publishTimestamp": 1794918859,
           "source": {
             "type": "git",
