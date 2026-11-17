@@ -1,5 +1,9 @@
 # 变更记录
 
+## 0.4.3
+
+- Windows 通知不再在你正用着 DSH 的时候弹：GUI 通过 `/__ink/notify/focus` 上报窗口焦点，`uiFocused` 为真时只推手机事件、不弹桌面 toast。手机通知照旧，不受影响。
+- `/__ink/notify/state` 增加 `uiFocused` 字段。
 ## 0.4.2
 
 - 诊断日志不再无限增长：`notify-hello.log` 超过 128 KiB、`ui-dump.txt` 超过 256 KiB 自动轮转为 `.old`（之前的 hello 日志已经 177 KB）。

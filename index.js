@@ -1005,7 +1005,8 @@ function startNotifyHub(ctx) {
     polls: 0,
     titles: new Map(),
     started: new Map(),
-    fired: new Map()
+    fired: new Map(),
+    uiFocused: false
   });
 
   const push = (payload) => {
@@ -1043,6 +1044,18 @@ function startNotifyHub(ctx) {
       response.end();
       return;
     }
+    if (url.pathname.endsWith('/notify/focus')) {
+      var focusChunks = [];
+      request.on('data', function (chunk) { focusChunks.push(chunk); });
+      request.on('end', function () {
+        var focused = false;
+        try { focused = JSON.parse(Buffer.concat(focusChunks).toString('utf8')).focused === true; } catch (error) { focused = false; }
+        shared.uiFocused = focused;
+        response.writeHead(204);
+        response.end();
+      });
+      return;
+    }
     if (url.pathname.endsWith('/last')) {
       shared.polls += 1;
       response.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
@@ -1050,7 +1063,7 @@ function startNotifyHub(ctx) {
       return;
     }
     if (url.pathname.endsWith('/state')) {
-      const body = JSON.stringify({ streams: shared.streams.size, titles: shared.titles.size, polls: shared.polls, pid: process.pid }, null, 2);
+      const body = JSON.stringify({ streams: shared.streams.size, titles: shared.titles.size, polls: shared.polls, uiFocused: shared.uiFocused, pid: process.pid }, null, 2);
       response.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
       response.end(body);
       return;
@@ -1090,6 +1103,7 @@ function startNotifyHub(ctx) {
     ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/__ink/notify', handler })),
     ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/__ink/notify/test', handler })),
     ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/__ink/notify/state', handler })),
+    ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/__ink/notify/focus', handler })),
     ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/__ink/notify/last', handler })),
     ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/__ink/notify/hello', handler })),
     ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/__ink/dump', handler }))
@@ -1154,7 +1168,9 @@ function startNotifyHub(ctx) {
     shared.started.delete(info.sessionId);
     /* let the final assistant message paint before the toast fires */
     setTimeout(() => {
-      fireDesktopNotice('DSH · 这一轮结束了', info.title !== '' ? info.title : (spent !== '' ? spent : '可以回来看结果了'));
+      /* The phone always needs the event; the Windows toast is noise while the user
+         is already looking at the app. */
+      if (!shared.uiFocused) fireDesktopNotice('DSH · 这一轮结束了', info.title !== '' ? info.title : (spent !== '' ? spent : '可以回来看结果了'));
       send({ type: 'turn-end', sessionId: info.sessionId, title: info.title, cwd: info.cwd, at: Date.now() });
     }, 350);
   }));

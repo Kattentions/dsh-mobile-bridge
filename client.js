@@ -299,6 +299,28 @@ window.__ModuleLoader__.load({
     return {
       inject: ['slots'],
       apply(ctx) {
+        /* Focus tracking lets the Host skip Windows toasts while the user is
+           already looking at the app; the phone still gets every turn event. */
+        try {
+          const reportFocus = (focused) => {
+            fetch('/__ink/notify/focus', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ focused, at: Date.now() }),
+            }).catch(() => {});
+          };
+          const onFocus = () => reportFocus(true);
+          const onBlur = () => reportFocus(false);
+          window.addEventListener('focus', onFocus);
+          window.addEventListener('blur', onBlur);
+          reportFocus(document.hasFocus ? document.hasFocus() : true);
+          ctx.effect(() => () => {
+            try {
+              window.removeEventListener('focus', onFocus);
+              window.removeEventListener('blur', onBlur);
+            } catch (error) { /* already gone */ }
+          });
+        } catch (error) { /* focus reporting is optional */ }
         ctx.slots.inject('settings.section', () => {
           const disposers = [];
           try {
