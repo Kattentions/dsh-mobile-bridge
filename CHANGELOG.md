@@ -1,5 +1,9 @@
 # 变更记录
 
+## 0.4.9
+
+- 新增 `scripts/check-app.mjs`，`npm run check` 现在同时跑路由检查和安装包检查：核对 `public/app/version.json` 的 version/versionCode/builtAt/size 是否齐全，且 size 必须等于 `dsh-harness.apk` 的真实字节数。清单和 APK 不同步时手机会下错文件，以前只能靠肉眼发现。
+- 实测链路一致：manifest 3.1（versionCode 22）→ version.json 同样 3.1/22/320294 字节 → APK 实际 320294 字节 → `/__ink/app/version.json` 与 `/__ink/app/dsh-harness.apk` 返回的版本、大小、content-type 全部匹配；用 aapt 解包 APK 确认内嵌 manifest 就是 versionCode 22 / versionName 3.1。
 ## 0.4.8
 
 - 撤销设备时顺手删掉它的投递游标：之前 `PHONE_CURSORS` 会留着已撤销设备的条目，`phone_state` 的 `cursors` 数偏大，且要等条目数超限才清理。实测：拉取一条通知后撤销，`cursors` 从 1 变 0。
