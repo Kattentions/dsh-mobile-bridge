@@ -45,12 +45,12 @@
       "category": "remote",
       "versions": [
         {
-          "version": "0.4.4",
-          "publishTimestamp": 1794911275,
+          "version": "0.4.5",
+          "publishTimestamp": 1794913353,
           "source": {
             "type": "git",
             "url": "https://github.com/Kattentions/dsh-mobile-bridge.git",
-            "commit": "f4fadd5a748f8460bad38f5df2563c64d5227322"
+            "commit": "6e2e85919b1ce60f5ae6ab97c1408ea752dab074"
           }
         }
       ]
