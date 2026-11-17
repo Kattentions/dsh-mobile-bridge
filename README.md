@@ -109,6 +109,10 @@ filtered out, so the phone is not woken up by delegated work.
 The companion Android shell (`dsh-harness`, source in the DSH workspace under `_android`) is what the APK in `public/app` is built from: QR pairing, full-screen WebView, file upload/download, background turn-end notifications
 (3.1 adds the workspace folder to the body) and update checks.
 
+## Development check
+
+`npm run check` compares the `/__ink/...` paths the phone shell references against the routes the host registers; a rename on either side fails the check instead of waiting for a dead feature on a real phone.
+
 ## Known limits
 
 - Proxy only, no tunnel: for public access use Cloudflare Quick Tunnel / Tailscale / OrayBox and judge the risk yourself

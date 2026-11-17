@@ -101,6 +101,10 @@ Windows 上可以用仓库里的 `open-pair.cmd`（从 `~/.dsh/mobile-bridge.jso
 
 配套 Android 壳（`dsh-harness`，源码在 DSH 工作区的 `_android`）就是本仓库 `public/app` 里那份 APK 的源码产物：扫码配对、WebView 全屏、文件上传下载、后台完成通知（3.1 起正文带工作区文件夹）、更新检查。
 
+## 开发自检
+
+`npm run check` 对照手机壳源码里引用的 `/__ink/...` 路径和宿主实际注册的路由，任何一边改了名字都会直接报出来——这类断裂以前只有真机上才会发现。
+
 ## 已知边界
 
 - 只代理，不做隧道；公网访问请用 Cloudflare Quick Tunnel / Tailscale / 蒲公英，并自行评估风险
