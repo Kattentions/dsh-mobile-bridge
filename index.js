@@ -458,6 +458,9 @@ export function apply(ctx) {
           let id = '';
           try { id = String(JSON.parse(Buffer.concat(chunks).toString('utf8')).id || ''); } catch (error) { id = ''; }
           const removed = id !== '' && revokeDevice(id);
+          /* A revoked device must not keep a delivery cursor around: it can never
+             be reached again, and phone_state should not count it. */
+          if (removed) PHONE_CURSORS.delete('device:' + id);
           response.writeHead(removed ? 200 : 404, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
           response.end(JSON.stringify({ ok: removed, id }));
         });
