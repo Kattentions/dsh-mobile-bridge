@@ -1,5 +1,9 @@
 # 变更记录
 
+## 0.4.10
+
+- 打包修正：`scripts/check-endpoints.mjs` 和 `scripts/check-app.mjs` 之前没进 npm 包，README 里的 `npm run check` 从 npm 装就找不到脚本。现在 `files` 加了 `scripts/**`；解包实测两个检查都能跑（没有安卓源码时端点检查会打印跳过而不是报错）。
+- 包内容核对：13 个文件，tgz 约 407 KB（APK 占大头），无调试残留。
 ## 0.4.9
 
 - 新增 `scripts/check-app.mjs`，`npm run check` 现在同时跑路由检查和安装包检查：核对 `public/app/version.json` 的 version/versionCode/builtAt/size 是否齐全，且 size 必须等于 `dsh-harness.apk` 的真实字节数。清单和 APK 不同步时手机会下错文件，以前只能靠肉眼发现。
