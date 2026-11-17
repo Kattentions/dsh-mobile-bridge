@@ -474,6 +474,23 @@ export function apply(ctx) {
         response.end(JSON.stringify({ commands }));
       }
     }));
+    /* Admin cleanup for queued commands (test notifications, a stale blast). */
+    inner.effect(() => inner.webServer.register({
+      kind: 'exact',
+      path: '/__ink/phone/clear',
+      handler: (request, response) => {
+        if (request.method !== 'POST') {
+          response.writeHead(405, { 'content-type': 'application/json; charset=utf-8', 'allow': 'POST' });
+          response.end(JSON.stringify({ error: 'method-not-allowed' }));
+          return;
+        }
+        PHONE_QUEUE.length = 0;
+        PHONE_CURSORS.clear();
+        response.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+        response.end(JSON.stringify({ ok: true, pending: PHONE_QUEUE.length }));
+      }
+    }));
+
     inner.effect(() => inner.webServer.register({
       kind: 'exact',
       path: '/__ink/phone/result',
