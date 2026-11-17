@@ -85,4 +85,6 @@ if (existsSync(indexPath)) {
 
 console.log('prepared ' + target + ':');
 for (const line of changed) console.log('  - ' + line);
-console.log('\nnext: update CHANGELOG.md, run `npm run check:release`, pack, commit, fill the index commit, then tag.');
+console.log('\nnext: update CHANGELOG.md, run `npm run check:release`, pack, commit the release,');
+console.log('      then set index.json source.commit to that commit in a follow-up `market:` commit,');
+console.log('      tag the follow-up commit (never amend afterwards) and push.');
