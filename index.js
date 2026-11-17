@@ -16,7 +16,7 @@ import http from 'node:http';
 import net from 'node:net';
 import os from 'node:os';
 import { spawn } from 'node:child_process';
-import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import { readFileSync, writeFileSync, readdirSync, existsSync, statSync, createReadStream } from 'node:fs';
 import { join, resolve as resolvePath, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -28,6 +28,9 @@ const BRIDGE_PORTS = [6080, 6081, 6090, 7090];
 let bridgePort = 0;
 const BRIDGE_STATE_FILE = join(process.env.USERPROFILE || process.env.HOME || '.', '.dsh', 'mobile-bridge.json');
 const BRIDGE_COOKIE = 'dsh-bridge';
+/** Per-device credential cookie issued by redeeming a one-time pairing code. */
+const DEVICE_COOKIE = 'dsh-bridge-token';
+const DEVICE_STORE_FILE = join(process.env.USERPROFILE || process.env.HOME || '.', '.dsh', 'mobile-bridge-devices.json');
 const BRIDGE_KEY_FILE = join(process.env.USERPROFILE || process.env.HOME || '.', '.dsh', 'mobile-bridge.key');
 const HELLO_FILE = join(process.env.USERPROFILE || process.env.HOME || '.', '.dsh', 'notify-hello.log');
 const DUMP_FILE = join(process.env.USERPROFILE || process.env.HOME || '.', '.dsh', 'ui-dump.txt');
@@ -52,6 +55,73 @@ function loadBridgeKey() {
 }
 
 const BRIDGE_KEY = loadBridgeKey();
+
+/** Paired-device registry: only SHA-256 digests of device tokens are stored. */
+function sha256(text) {
+  return createHash('sha256').update(String(text), 'utf8').digest('hex');
+}
+
+function loadDevices() {
+  try {
+    const parsed = JSON.parse(readFileSync(DEVICE_STORE_FILE, 'utf8'));
+    if (!parsed || !Array.isArray(parsed.devices)) return [];
+    return parsed.devices.filter((row) => row && typeof row.id === 'string' && typeof row.tokenHash === 'string');
+  } catch (error) { return []; }
+}
+
+let BRIDGE_PAIRED = loadDevices();
+
+function saveDevices() {
+  try { writeFileSync(DEVICE_STORE_FILE, JSON.stringify({ version: 1, devices: BRIDGE_PAIRED }, null, 2), 'utf8'); } catch (error) { /* best effort */ }
+}
+
+/** One-time pairing codes: memory only, so a restart invalidates every outstanding QR. */
+const PAIR_CODES = new Map();
+const PAIR_CODE_TTL_MS = 120_000;
+
+function mintPairCode() {
+  const now = Date.now();
+  for (const [code, row] of PAIR_CODES) if (row.expiresAt <= now) PAIR_CODES.delete(code);
+  let code = '';
+  do { code = String(randomInt(0, 1_000_000)).padStart(6, '0'); } while (PAIR_CODES.has(code));
+  PAIR_CODES.set(code, { expiresAt: now + PAIR_CODE_TTL_MS });
+  return { code, expiresAt: now + PAIR_CODE_TTL_MS };
+}
+
+/** Redeem a pairing code once; returns the fresh device token or an error code. */
+function redeemPairCode(code) {
+  const row = PAIR_CODES.get(String(code || ''));
+  if (row === undefined) return { error: 'invalid-code' };
+  PAIR_CODES.delete(String(code));
+  if (row.expiresAt <= Date.now()) return { error: 'expired-code' };
+  const token = randomBytes(32).toString('hex');
+  const device = {
+    id: randomBytes(8).toString('hex'),
+    name: '手机',
+    tokenHash: sha256(token),
+    createdAt: Date.now(),
+    lastSeenAt: Date.now(),
+  };
+  BRIDGE_PAIRED = [device, ...BRIDGE_PAIRED].slice(0, 50);
+  saveDevices();
+  return { token, device };
+}
+
+/** Find a paired device by its cookie token without leaking the token itself. */
+function deviceForToken(token) {
+  const digest = sha256(String(token || ''));
+  const device = BRIDGE_PAIRED.find((row) => row.tokenHash === digest);
+  if (device === undefined) return undefined;
+  device.lastSeenAt = Date.now();
+  return device;
+}
+
+function revokeDevice(id) {
+  const before = BRIDGE_PAIRED.length;
+  BRIDGE_PAIRED = BRIDGE_PAIRED.filter((row) => row.id !== String(id));
+  if (BRIDGE_PAIRED.length !== before) saveDevices();
+  return BRIDGE_PAIRED.length !== before;
+}
 
 /** Devices seen through the bridge, keyed by address + user agent. Memory only. */
 const BRIDGE_DEVICES = new Map();
@@ -226,6 +296,54 @@ export function apply(ctx) {
           'cache-control': 'public, max-age=86400'
         });
         response.end(qrSvgOf(data));
+      }
+    }));
+    /* Per-device pairing: the desktop asks for a short-lived code, shows it as a
+       QR, and the phone redeems it once for its own token. The long-lived master
+       key stays available for existing links but is no longer the only way in. */
+    inner.effect(() => inner.webServer.register({
+      kind: 'exact',
+      path: '/__ink/pair/code',
+      handler: (request, response) => {
+        const minted = mintPairCode();
+        let state = null;
+        try { state = pairState(); } catch (error) { /* bridge down */ }
+        const networks = state && Array.isArray(state.networks) ? state.networks.map((entry) => ({
+          name: entry.name,
+          address: entry.address,
+          url: 'http://' + entry.address + ':' + (state.port || 0) + '/pair?c=' + minted.code,
+        })) : [];
+        response.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+        response.end(JSON.stringify({ code: minted.code, expiresAt: minted.expiresAt, ttlMs: PAIR_CODE_TTL_MS, networks }));
+      }
+    }));
+    inner.effect(() => inner.webServer.register({
+      kind: 'exact',
+      path: '/__ink/pair/devices',
+      handler: (request, response) => {
+        const devices = BRIDGE_PAIRED.map((row) => ({ id: row.id, name: row.name, createdAt: row.createdAt, lastSeenAt: row.lastSeenAt }));
+        response.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+        response.end(JSON.stringify({ devices }));
+      }
+    }));
+    inner.effect(() => inner.webServer.register({
+      kind: 'exact',
+      path: '/__ink/pair/revoke',
+      handler: (request, response) => {
+        if (request.method !== 'POST') {
+          response.writeHead(405, { 'content-type': 'application/json; charset=utf-8', 'allow': 'POST' });
+          response.end(JSON.stringify({ error: 'method-not-allowed' }));
+          return;
+        }
+        const chunks = [];
+        request.on('data', (chunk) => { if (chunks.length < 32) chunks.push(chunk); });
+        request.on('end', () => {
+          let id = '';
+          try { id = String(JSON.parse(Buffer.concat(chunks).toString('utf8')).id || ''); } catch (error) { id = ''; }
+          const removed = id !== '' && revokeDevice(id);
+          response.writeHead(removed ? 200 : 404, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+          response.end(JSON.stringify({ ok: removed, id }));
+        });
       }
     }));
     /* Phone app: landing page, version manifest and the APK itself. Paired phones
@@ -409,17 +527,19 @@ function startMobileBridge(inner) {
     return cookie;
   };
 
-  const cookieValue = (request) => {
+  const cookieValue = (request, name) => {
     const header = request.headers.cookie;
     if (typeof header !== 'string') return '';
+    const wanted = name || BRIDGE_COOKIE;
     for (const part of header.split(';')) {
       const index = part.indexOf('=');
-      if (index > 0 && part.slice(0, index).trim() === BRIDGE_COOKIE) return part.slice(index + 1).trim();
+      if (index > 0 && part.slice(0, index).trim() === wanted) return part.slice(index + 1).trim();
     }
     return '';
   };
   const wantsKey = (request) => {
-    if (keyEquals(cookieValue(request))) return false;
+    if (deviceForToken(cookieValue(request, DEVICE_COOKIE)) !== undefined) return false;
+    if (keyEquals(cookieValue(request, BRIDGE_COOKIE))) return false;
     const url = new URL(request.url || '/', 'http://bridge.invalid');
     return !keyEquals(url.searchParams.get('k') || '');
   };
@@ -503,10 +623,33 @@ function startMobileBridge(inner) {
         authFailures: AUTH_FAILURES.size,
         wsPaths: Object.fromEntries(WS_STATS),
         wsDenied: Object.fromEntries(WS_DENIED),
-        devices: BRIDGE_DEVICES.size
+        devices: BRIDGE_DEVICES.size,
+        pairedDevices: BRIDGE_PAIRED.length,
+        pairingCodes: PAIR_CODES.size
       }, null, 2);
       response.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
       response.end(body);
+      return;
+    }
+    const pairCode = url.searchParams.get('c');
+    if (pairCode !== null && pairCode !== '') {
+      const redeemed = redeemPairCode(pairCode);
+      if (redeemed.error) {
+        response.writeHead(401, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+        response.end(JSON.stringify({ error: redeemed.error }));
+        return;
+      }
+      clearAuthFailures(request);
+      recordDevice(request);
+      const rest = new URLSearchParams(url.searchParams);
+      rest.delete('c');
+      const query = rest.toString();
+      response.writeHead(302, {
+        location: url.pathname + (query === '' ? '' : '?' + query),
+        'set-cookie': DEVICE_COOKIE + '=' + redeemed.token + '; Path=/; Max-Age=31536000; SameSite=Lax; HttpOnly',
+        'cache-control': 'no-store'
+      });
+      response.end();
       return;
     }
     if (!publicPath && wantsKey(request)) {
@@ -1083,11 +1226,18 @@ function pairState() {
     .slice(0, DEVICE_LIMIT);
   let app = null;
   try { app = readAppMeta(); } catch (error) { /* APK not built yet */ }
+  const paired = BRIDGE_PAIRED.map((row) => ({
+    id: row.id,
+    name: row.name,
+    createdAt: row.createdAt,
+    lastSeenAt: row.lastSeenAt,
+  }));
   return {
     listening: Boolean(port && key),
     port,
     key,
     devices,
+    paired,
     app,
     networks: usable.map((entry, index) => {
       const url = 'http://' + entry.address + ':' + port + '/?k=' + key;

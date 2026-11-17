@@ -21,6 +21,8 @@ window.__ModuleLoader__.load({
       .kmb-qrBox { align-self:center; padding:10px; border-radius:8px; background:#fff }
       .kmb-qrBox img { display:block; width:168px; height:168px }
       .kmb-hint { margin:0; font-size:12px; line-height:1.5; color:var(--dsw-alias-label-secondary) }
+      .kmb-code { margin:0; font-size:12px; line-height:1.6; color:var(--dsw-alias-label-primary) }
+      .kmb-code strong { font-size:15px; letter-spacing:1px; font-variant-numeric:tabular-nums }
       .kmb-rows { display:flex; flex-direction:column; gap:0 }
       .kmb-row { display:flex; align-items:center; gap:10px; padding:7px 0; border-top:1px solid var(--dsw-alias-border-l1); font-size:13px }
       .kmb-row:first-child { border-top:0 }
@@ -96,6 +98,7 @@ window.__ModuleLoader__.load({
       const [error, setError] = useState('');
       const [refreshing, setRefreshing] = useState(false);
       const [copied, copy] = useCopied();
+      const [pairing, setPairing] = useState(null);
 
       const load = useCallback((manual) => {
         if (manual) setRefreshing(true);
@@ -127,9 +130,14 @@ window.__ModuleLoader__.load({
 
       const networks = useMemo(() => (state && Array.isArray(state.networks) ? state.networks : []), [state]);
       const devices = useMemo(() => (state && Array.isArray(state.devices) ? state.devices : []), [state]);
+      const paired = useMemo(() => (state && Array.isArray(state.paired) ? state.paired : []), [state]);
       const first = networks[0];
-      const qr = first && first.deep
-        ? './__ink/pair/qr?d=' + encodeURIComponent(first.deep)
+      /* Prefer a freshly minted pairing URL: the phone redeems it once for its own
+         device token. The deep link with the master key stays as a fallback. */
+      const pairNetwork = pairing && Array.isArray(pairing.networks) ? pairing.networks.find((entry) => entry && entry.url) : null;
+      const qrPayload = pairNetwork && pairNetwork.url ? pairNetwork.url : (first && first.deep ? first.deep : '');
+      const qr = qrPayload !== ''
+        ? './__ink/pair/qr?d=' + encodeURIComponent(qrPayload)
         : '';
       const app = state && state.app ? state.app : null;
       const running = Boolean(state && state.listening);
@@ -157,7 +165,18 @@ window.__ModuleLoader__.load({
               qr !== ''
                 ? h('div', { className: 'kmb-qrBox' }, h('img', { src: qr, alt: '配对二维码', width: 168, height: 168 }))
                 : h('div', { className: 'kmb-empty' }, '桥还没有公布可用地址，先确认电脑有局域网连接。'),
-              h('p', { className: 'kmb-hint' }, '用 DSH 手机 App 里的「扫码配对」扫这个码。码里带着连接密钥，别截图发到公开的地方。'),
+              h('div', { className: 'kmb-actions' },
+                h(Button, { onClick: () => {
+                  fetch('./__ink/pair/code', { cache: 'no-store' })
+                    .then((response) => response.ok ? response.json() : Promise.reject(new Error('code ' + response.status)))
+                    .then((value) => setPairing(value))
+                    .catch(() => setError('生成配对码失败，稍后再试。'));
+                } }, pairing ? '换一个配对码' : '生成配对码'),
+                pairing ? h(Button, { onClick: () => copy('code', pairing.code) }, copied === 'code' ? '已复制' : '复制配对码') : null,
+              ),
+              pairing
+                ? h('p', { className: 'kmb-code' }, '配对码 ', h('strong', null, pairing.code), '（2 分钟内有效，只能用一次）')
+                : h('p', { className: 'kmb-hint' }, '点「生成配对码」后，用手机 App 的「扫码配对」扫上面的码；配对码一次有效，过期就再生成一个。'),
             ),
             h('div', { className: 'kmb-card' },
               h('div', { className: 'kmb-cardHead' }, '连接地址'),
@@ -198,6 +217,27 @@ window.__ModuleLoader__.load({
         ),
 
         h('section', { className: 'kmb-group' },
+          h('h3', { className: 'kmb-head' }, '已配对设备'),
+          paired.length === 0
+            ? h('p', { className: 'kmb-empty' }, '还没有已配对设备。生成配对码、用手机扫一次之后，这里会出现一台记录。')
+            : h('div', { className: 'kmb-rows' },
+              paired.map((device) => h('div', { className: 'kmb-row', key: device.id },
+                h('div', { className: 'kmb-rowLabel' },
+                  h('span', { className: 'kmb-rowName' }, device.name || '手机'),
+                  h('span', { className: 'kmb-rowValue' }, '最近使用 ' + when(device.lastSeenAt)),
+                ),
+                h(Button, { onClick: () => {
+                  fetch('./__ink/pair/revoke', {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({ id: device.id }),
+                  }).then(() => load(false)).catch(() => setError('撤销设备失败，稍后再试。'));
+                }, title: '撤销后这台手机需要重新配对' }, '撤销'),
+              )),
+            ),
+        ),
+
+        h('section', { className: 'kmb-group' },
           h('h3', { className: 'kmb-head' }, '最近连接的设备'),
           devices.length === 0
             ? h('p', { className: 'kmb-empty' }, '还没有设备连过。配对成功、手机打开页面之后这里会出现记录。')
@@ -215,7 +255,7 @@ window.__ModuleLoader__.load({
         h('p', { className: 'kmb-note' },
           '桥只对局域网开放，别把 6080 端口映射到公网。想一次性让所有已配对设备失效，删掉 ',
           h('code', null, '~/.dsh/mobile-bridge.key'),
-          ' 再重启 DSH。'),
+          ' 再重启 DSH；只想断某一台手机，用上面的「撤销」。'),
       );
     }
 
