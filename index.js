@@ -227,10 +227,52 @@ const WS_DENIED = new Map();
 const PHONE_QUEUE = [];
 const PHONE_RESULTS = [];
 let PHONE_SEQ = 0;
+/* Commands are broadcast, not consumed: each paired device keeps a cursor, so two
+   phones polling at once both receive a notification instead of racing for it. */
+const PHONE_CURSORS = new Map();
+
+/** Cookie reader usable outside the proxy scope (device auth helpers live here). */
+function phoneCookie(request, name) {
+  const header = request && request.headers ? request.headers.cookie : '';
+  if (typeof header !== 'string') return '';
+  for (const part of header.split(';')) {
+    const index = part.indexOf('=');
+    if (index > 0 && part.slice(0, index).trim() === name) return part.slice(index + 1).trim();
+  }
+  return '';
+}
+
+/** Identity used for cursors: the paired device id, else the raw cookie, else shared. */
+function phoneDeviceKey(request) {
+  /* The proxy replaces the client's cookie with the upstream GUI session before
+     forwarding, so the device token is gone by the time a route handler runs. The
+     proxy stamps the resolved device id on a private header instead. */
+  const stamped = request && request.headers ? String(request.headers['x-dsh-bridge-device'] || '') : '';
+  if (stamped !== '') return 'device:' + stamped;
+  const token = phoneCookie(request, DEVICE_COOKIE);
+  const device = token === '' ? undefined : deviceForToken(token);
+  if (device && device.id) return 'device:' + device.id;
+  return token === '' ? 'shared' : 'token:' + token.slice(0, 12);
+}
+
+/** Commands this device has not received yet; advances only its own cursor. */
+function takePhoneCommands(deviceKey) {
+  const last = PHONE_CURSORS.get(deviceKey) || 0;
+  const pending = PHONE_QUEUE.filter((command) => Number(command.seq || 0) > last).slice(0, 10);
+  if (pending.length > 0) {
+    PHONE_CURSORS.set(deviceKey, Number(pending[pending.length - 1].seq) || last);
+    if (PHONE_CURSORS.size > 64) {
+      const oldest = PHONE_CURSORS.keys().next().value;
+      if (oldest !== undefined) PHONE_CURSORS.delete(oldest);
+    }
+  }
+  return pending;
+}
 
 function enqueuePhoneCommand(type, title, text) {
   PHONE_SEQ += 1;
   const command = {
+    seq: PHONE_SEQ,
     id: 'p' + PHONE_SEQ.toString(36) + randomBytes(3).toString('hex'),
     type: String(type || 'notify'),
     title: String(title || 'DSH'),
@@ -285,6 +327,7 @@ export function apply(ctx) {
       output,
       execute: async () => ({
         pending: PHONE_QUEUE.length,
+        cursors: PHONE_CURSORS.size,
         commands: PHONE_QUEUE.slice(-5),
         results: PHONE_RESULTS.slice(-5),
       }),
@@ -426,7 +469,7 @@ export function apply(ctx) {
       kind: 'exact',
       path: '/__ink/phone/pull',
       handler: (request, response) => {
-        const commands = PHONE_QUEUE.splice(0, 10);
+        const commands = takePhoneCommands(phoneDeviceKey(request));
         response.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
         response.end(JSON.stringify({ commands }));
       }
@@ -661,10 +704,15 @@ function startMobileBridge(inner) {
     const headers = {};
     for (const [name, value] of Object.entries(request.headers)) {
       if (name === 'host' || name === 'cookie' || name === 'connection') continue;
+      if (name === 'x-dsh-bridge-device') continue;
       headers[name] = value;
     }
     headers.host = upstreamHost;
     headers.cookie = await ensureCookie(retried);
+    try {
+      const device = deviceForToken(cookieValue(request, DEVICE_COOKIE));
+      if (device && device.id) headers['x-dsh-bridge-device'] = device.id;
+    } catch (error) { /* anonymous key session */ }
     headers['x-forwarded-host'] = request.headers.host || '';
     /* The GUI is same-origin with the upstream listener, so any CSRF-style
        origin check downstream must see that listener, not the phone address. */
