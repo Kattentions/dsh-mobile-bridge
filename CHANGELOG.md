@@ -1,5 +1,10 @@
 # 变更记录
 
+## 0.4.15
+
+- 新增真机隔离探针 `scripts/probe-devices.mjs`（`npm run probe:devices`）：在运行中的桥上半自动配对两台临时设备，验证「各自都能拉命令」「撤销 A 后 A 立即 401、B 继续 200」「设备列表只剩 B」，最后撤销自己创建的设备并清空手机队列。不碰真实配对的手机。
+- 第一次跑就抓到一个探针自身的 bug：撤销的是「列表里最新那台」而不是「A 对应的设备」，导致 A 没被撤销、断言失败。现在每配对一台就 diff 设备列表拿到准确 id；顺带把结尾的 `process.exit` 改成 `process.exitCode`，避免 Node 24 / Windows 下 libuv 断言崩溃。
+- README 中英补探针说明；实测 9 项断言全过，跑完设备数 0、手机队列 pending 0。
 ## 0.4.14
 
 - 新增 `scripts/prepare-release.mjs`（`npm run prepare-release -- <版本号>`）：一次改完 package.json 和 index.json（版本先占位 PENDING），拒绝降级；桥客户端没有版本常量，所以只动这两处。

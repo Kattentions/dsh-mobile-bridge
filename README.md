@@ -111,6 +111,8 @@ The companion Android shell (`dsh-harness`, source in the DSH workspace under `_
 
 ## Development check
 
+`npm run probe:devices` is a live isolation probe: it pairs two throwaway devices against the running bridge, proves that revoking one leaves the other working and the revoked token gets 401 immediately, then revokes what it created and clears the phone queue (a real paired phone is never touched).
+
 `npm run check` does two things: compares the `/__ink/...` paths the phone shell references against the routes the host registers, and verifies `public/app/version.json` matches `dsh-harness.apk` in version and byte size (a mismatch makes the phone update check download the wrong file); a rename on either side fails the check instead of waiting for a dead feature on a real phone.
 
 ## Known limits

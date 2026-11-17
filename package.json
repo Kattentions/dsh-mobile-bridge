@@ -1,6 +1,6 @@
 {
   "name": "dsh-mobile-bridge",
-  "version": "0.4.14",
+  "version": "0.4.15",
   "private": false,
   "type": "module",
   "description": "DeepSeek Harness mobile bridge: LAN pairing with QR codes, a cookie-isolated proxy of the desktop GUI, APK download page and turn-end notification stream for phones.",
@@ -55,7 +55,8 @@
   "scripts": {
     "check": "node scripts/check-endpoints.mjs && node scripts/check-app.mjs",
     "check:release": "node scripts/check-release.mjs",
-    "prepare-release": "node scripts/prepare-release.mjs"
+    "prepare-release": "node scripts/prepare-release.mjs",
+    "probe:devices": "node scripts/probe-devices.mjs"
   },
   "engines": {
     "node": ">=20"
