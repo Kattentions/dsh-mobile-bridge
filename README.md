@@ -87,10 +87,27 @@ On Windows, `open-pair.cmd` reads the GUI address from `~/.dsh/mobile-bridge.jso
 | `/__ink/app/version.json` | version manifest |
 | `/__ink/app/dsh-harness.apk` | the APK |
 | `/__ink/notify`, `/last`, `/state`, `/test` | turn-end event stream and diagnostics |
+| `/__ink/notify/focus` | GUI reports window focus, so the desktop toast can stay quiet while you are using the app |
+
+## Notifications
+
+Every root session turn end (or error) publishes an event on `/__ink/notify` with the
+`sessionId`, its title and its workspace `cwd`. Child sessions, subagents and teammates are
+filtered out, so the phone is not woken up by delegated work.
+
+- **Phone**: the app polls `/__ink/notify/last` in the background and shows a system
+  notification. Version 3.1 (versionCode 22) renders the body as `workspace folder · session
+  title`, which is what you need when several workspaces run at once.
+- **Desktop**: a Windows toast is fired only while the app window is *not* focused — the GUI
+  posts `{focused:true|false}` to `/__ink/notify/focus` on focus/blur, so you do not get a
+  banner for a turn you just watched finish.
+- `/__ink/notify/state` exposes the stream count, poll count and the current `uiFocused`
+  flag for debugging.
 
 ## Relation to the phone shell
 
-The companion Android shell (`dsh-harness`, source in the DSH workspace under `_android`) is what the APK in `public/app` is built from: QR pairing, full-screen WebView, file upload/download, background turn-end notifications and update checks.
+The companion Android shell (`dsh-harness`, source in the DSH workspace under `_android`) is what the APK in `public/app` is built from: QR pairing, full-screen WebView, file upload/download, background turn-end notifications
+(3.1 adds the workspace folder to the body) and update checks.
 
 ## Known limits
 

@@ -87,10 +87,19 @@ Windows 上可以用仓库里的 `open-pair.cmd`（从 `~/.dsh/mobile-bridge.jso
 | `/__ink/app/version.json` | 版本清单 |
 | `/__ink/app/dsh-harness.apk` | 安装包 |
 | `/__ink/notify`、`/last`、`/state`、`/test` | 完成事件流与诊断 |
+| `/__ink/notify/focus` | GUI 上报窗口焦点，用着 DSH 的时候桌面 toast 不打扰 |
+
+## 通知
+
+每个**根会话**的 turn end（或出错）会往 `/__ink/notify` 推一条事件，带 `sessionId`、会话标题和工作区路径 `cwd`。子会话、子智能体、团队成员的工作会结束，但不会推给你的手机。
+
+- **手机**：App 后台轮询 `/__ink/notify/last` 并弹系统通知。3.1（versionCode 22）起通知正文是「工作区文件夹 · 会话标题」，多工作区同时跑的时候能看出是哪一条。
+- **桌面**：只有 DSH 窗口**不在前台**时才弹 Windows toast——GUI 会在 focus/blur 时向 `/__ink/notify/focus` 上报状态，你正看着屏幕时不会再收到「这一轮结束了」的横幅。
+- `/__ink/notify/state` 会给出流数量、轮询次数和当前的 `uiFocused`，排查通知问题时看这个。
 
 ## 和手机壳的关系
 
-配套 Android 壳（`dsh-harness`，源码在 DSH 工作区的 `_android`）就是本仓库 `public/app` 里那份 APK 的源码产物：扫码配对、WebView 全屏、文件上传下载、后台完成通知、更新检查。
+配套 Android 壳（`dsh-harness`，源码在 DSH 工作区的 `_android`）就是本仓库 `public/app` 里那份 APK 的源码产物：扫码配对、WebView 全屏、文件上传下载、后台完成通知（3.1 起正文带工作区文件夹）、更新检查。
 
 ## 已知边界
 
