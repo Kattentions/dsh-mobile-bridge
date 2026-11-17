@@ -1,5 +1,11 @@
 # 变更记录
 
+## 0.4.14
+
+- 新增 `scripts/prepare-release.mjs`（`npm run prepare-release -- <版本号>`）：一次改完 package.json 和 index.json（版本先占位 PENDING），拒绝降级；桥客户端没有版本常量，所以只动这两处。
+- 发布流程修正：之前用 `git commit --amend` 填索引 commit 会改变提交哈希，导致索引里指向一个没推上去的提交。现在改成：release 提交 → 再提交一次 `market:` 只改索引 commit → tag 打在这个后续提交上。0.4.14 按新流程发布。
+
+
 ## 0.4.13
 
 - 新增 `scripts/check-release.mjs`（`npm run check:release`）：核对 `package.json` 与市场 `index.json` 的版本是否一致，并检查发布必需文件（APK、version.json、vendor、两个检查脚本、双语文档）是否齐全。
