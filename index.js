@@ -16,7 +16,7 @@ import http from 'node:http';
 import net from 'node:net';
 import os from 'node:os';
 import { spawn } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { readFileSync, writeFileSync, readdirSync, existsSync, statSync, createReadStream } from 'node:fs';
 import { join, resolve as resolvePath, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -81,6 +81,68 @@ function recordDevice(request) {
       for (const [stale] of ordered.slice(0, ordered.length - DEVICE_LIMIT)) BRIDGE_DEVICES.delete(stale);
     }
   } catch (error) { /* tracking only */ }
+}
+
+/** Constant-time check for the bridge key (both cookie value and ?k=). */
+function keyEquals(candidate) {
+  const left = Buffer.from(String(candidate || ''), 'utf8');
+  const right = Buffer.from(BRIDGE_KEY, 'utf8');
+  if (left.length !== right.length) return false;
+  try { return timingSafeEqual(left, right); } catch (error) { return false; }
+}
+
+/* Failed key attempts, keyed by client address. A LAN listener is small enough
+   that brute-forcing a 9-byte key is infeasible, but a noise source should not
+   keep the CPU busy either. */
+const AUTH_FAILURES = new Map();
+const AUTH_WINDOW_MS = 60_000;
+const AUTH_MAX_FAILURES = 12;
+
+function clientAddress(request) {
+  return String((request.socket && request.socket.remoteAddress) || '').replace(/^::ffff:/, '');
+}
+
+/** @returns {number} milliseconds the client must wait, or 0 when allowed. */
+function authBlockedFor(request) {
+  const ip = clientAddress(request);
+  const entry = AUTH_FAILURES.get(ip);
+  if (entry === undefined) return 0;
+  const now = Date.now();
+  if (entry.until > now) return entry.until - now;
+  /* Keep the counter while its window is still open: deleting it here restarted
+     the count on every request, so the limit never fired. */
+  if (now - entry.since > AUTH_WINDOW_MS) AUTH_FAILURES.delete(ip);
+  return 0;
+}
+
+function recordAuthFailure(request) {
+  const ip = clientAddress(request);
+  const now = Date.now();
+  const entry = AUTH_FAILURES.get(ip) || { count: 0, since: now, until: 0 };
+  if (now - entry.since > AUTH_WINDOW_MS) { entry.count = 0; entry.since = now; }
+  entry.count += 1;
+  if (entry.count >= AUTH_MAX_FAILURES) entry.until = now + AUTH_WINDOW_MS;
+  AUTH_FAILURES.set(ip, entry);
+  if (AUTH_FAILURES.size > 128) {
+    for (const [key, value] of AUTH_FAILURES) if (value.until < now) AUTH_FAILURES.delete(key);
+  }
+}
+
+function clearAuthFailures(request) {
+  AUTH_FAILURES.delete(clientAddress(request));
+}
+
+/** WebSocket paths the GUI actually opens; everything else is refused. */
+const WS_ALLOW_PREFIXES = ['/api/', '/sidebar/', '/__', '/favicon', '/assets/', '/manifest.webmanifest'];
+const WS_STATS = new Map();
+const WS_DENIED = new Map();
+
+function bumpCounter(map, key) {
+  map.set(key, (map.get(key) || 0) + 1);
+  if (map.size > 64) {
+    const oldest = map.keys().next().value;
+    if (oldest !== undefined) map.delete(oldest);
+  }
 }
 
 /** The index tap only exists when the page is served over HTTP. */
@@ -347,11 +409,19 @@ function startMobileBridge(inner) {
     return cookie;
   };
 
-  const wantsKey = (request) => {
+  const cookieValue = (request) => {
     const header = request.headers.cookie;
-    if (typeof header === 'string' && header.includes(BRIDGE_COOKIE + '=' + BRIDGE_KEY)) return false;
+    if (typeof header !== 'string') return '';
+    for (const part of header.split(';')) {
+      const index = part.indexOf('=');
+      if (index > 0 && part.slice(0, index).trim() === BRIDGE_COOKIE) return part.slice(index + 1).trim();
+    }
+    return '';
+  };
+  const wantsKey = (request) => {
+    if (keyEquals(cookieValue(request))) return false;
     const url = new URL(request.url || '/', 'http://bridge.invalid');
-    return url.searchParams.get('k') !== BRIDGE_KEY;
+    return !keyEquals(url.searchParams.get('k') || '');
   };
 
   const forward = async (request, response, retried) => {
@@ -392,9 +462,17 @@ function startMobileBridge(inner) {
       answer.pipe(response);
     });
     upstream.on('error', (error) => {
+      const code = String((error && error.code) || '');
+      const timedOut = code === 'ETIMEDOUT' || code === 'ESOCKETTIMEDOUT';
       try {
-        if (!response.headersSent) response.writeHead(502, { 'content-type': 'text/plain; charset=utf-8' });
-        response.end('mobile bridge upstream: ' + String((error && error.message) || error));
+        if (!response.headersSent) {
+          response.writeHead(timedOut ? 504 : 502, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+        }
+        response.end(JSON.stringify({
+          error: timedOut ? 'upstream-timeout' : 'upstream-unreachable',
+          code: code || 'unknown',
+          detail: String((error && error.message) || error).slice(0, 200)
+        }));
       } catch (ignored) { /* response already gone */ }
     });
     request.pipe(upstream);
@@ -409,13 +487,36 @@ function startMobileBridge(inner) {
       || url.pathname === '/robots.txt'
       || url.pathname.startsWith('/favicon');
     if (url.pathname === '/__bridge') {
+      /* Diagnostics expose the key and WS counters; never hand them to a LAN
+         client that is not already authenticated. */
+      const local = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(clientAddress(request));
+      if (!local && wantsKey(request)) {
+        response.writeHead(401, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+        response.end(JSON.stringify({ error: 'auth-required' }));
+        return;
+      }
       const address = server && server.address();
-      const body = JSON.stringify({ listening: !closed, port: address && address.port, key: BRIDGE_KEY }, null, 2);
+      const body = JSON.stringify({
+        listening: !closed,
+        port: address && address.port,
+        key: BRIDGE_KEY,
+        authFailures: AUTH_FAILURES.size,
+        wsPaths: Object.fromEntries(WS_STATS),
+        wsDenied: Object.fromEntries(WS_DENIED),
+        devices: BRIDGE_DEVICES.size
+      }, null, 2);
       response.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
       response.end(body);
       return;
     }
     if (!publicPath && wantsKey(request)) {
+      const waitMs = authBlockedFor(request);
+      if (waitMs > 0) {
+        response.writeHead(429, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'retry-after': String(Math.ceil(waitMs / 1000)) });
+        response.end(JSON.stringify({ error: 'rate-limited', retryAfterMs: waitMs }));
+        return;
+      }
+      recordAuthFailure(request);
       response.writeHead(401, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
       response.end('<!doctype html><meta charset="utf-8"><title>DSH mobile bridge</title>'
         + '<body style="font:14px/1.6 system-ui;color:#131316;background:#fafaf9;padding:40px">'
@@ -425,7 +526,8 @@ function startMobileBridge(inner) {
         + '</body>');
       return;
     }
-    if (url.searchParams.get('k') === BRIDGE_KEY) {
+    if (keyEquals(url.searchParams.get('k') || '')) {
+      clearAuthFailures(request);
       recordDevice(request);
       const rest = new URLSearchParams(url.searchParams);
       rest.delete('k');
@@ -453,7 +555,22 @@ function startMobileBridge(inner) {
     socket.on('close', () => sockets.delete(socket));
   });
   server.on('upgrade', (request, socket, head) => {
-    if (wantsKey(request)) { try { socket.destroy(); } catch (error) { /* ignore */ } return; }
+    if (authBlockedFor(request) > 0 || wantsKey(request)) {
+      recordAuthFailure(request);
+      try { socket.destroy(); } catch (error) { /* ignore */ }
+      return;
+    }
+    const wsPath = new URL(request.url || '/', 'http://bridge.invalid').pathname;
+    bumpCounter(WS_STATS, wsPath);
+    /* Only the paths the GUI itself opens; a plugin-injected or future route must
+       opt in explicitly instead of riding the bridge. */
+    const wsAllowed = WS_ALLOW_PREFIXES.some((prefix) => wsPath === prefix || wsPath.startsWith(prefix));
+    if (!wsAllowed) {
+      bumpCounter(WS_DENIED, wsPath);
+      try { socket.write('HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n'); } catch (error) { /* ignore */ }
+      try { socket.destroy(); } catch (error) { /* ignore */ }
+      return;
+    }
     const lines = ['GET ' + request.url + ' HTTP/1.1', 'Host: ' + upstreamHost, 'Connection: Upgrade'];
     if (request.headers.upgrade) lines.push('Upgrade: ' + request.headers.upgrade);
     if (request.headers['sec-websocket-key']) lines.push('Sec-WebSocket-Key: ' + request.headers['sec-websocket-key']);
