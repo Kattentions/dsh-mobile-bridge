@@ -1,5 +1,9 @@
 # 变更记录
 
+## 0.4.2
+
+- 诊断日志不再无限增长：`notify-hello.log` 超过 128 KiB、`ui-dump.txt` 超过 256 KiB 自动轮转为 `.old`（之前的 hello 日志已经 177 KB）。
+- 手机壳 3.1（versionCode 22）：通知正文带上工作区文件夹名 + 会话标题，多工作区同时跑的时候能看出是哪一条。
 ## 0.4.1
 
 - 修通知 hub 崩溃点：`shared.streams` 的 add/delete/clear 写错成 `streamsadd/streamsdelete/streamsclear`，客户端断流时会抛 TypeError；`/__ink/notify/state` 里引用了不存在的 `titles`/`polls`，访问即 500。

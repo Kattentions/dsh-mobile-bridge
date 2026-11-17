@@ -17,7 +17,7 @@ import net from 'node:net';
 import os from 'node:os';
 import { spawn } from 'node:child_process';
 import { createHash, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
-import { readFileSync, writeFileSync, readdirSync, existsSync, statSync, createReadStream } from 'node:fs';
+import { readFileSync, writeFileSync, readdirSync, existsSync, statSync, createReadStream, renameSync } from 'node:fs';
 import { join, resolve as resolvePath, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import qrcodeFactory from './vendor/qr.mjs';
@@ -32,6 +32,22 @@ const BRIDGE_COOKIE = 'dsh-bridge';
 const DEVICE_COOKIE = 'dsh-bridge-token';
 const DEVICE_STORE_FILE = join(process.env.USERPROFILE || process.env.HOME || '.', '.dsh', 'mobile-bridge-devices.json');
 const BRIDGE_KEY_FILE = join(process.env.USERPROFILE || process.env.HOME || '.', '.dsh', 'mobile-bridge.key');
+/**
+ * Append to a diagnostic log, rotating it once it passes the cap. The phone polls
+ * and reconnects this stream often; unbounded growth would quietly fill the disk.
+ * @param {string} file - log path.
+ * @param {string} text - line(s) to append.
+ * @param {number} [maxBytes] - rotate threshold, default 128 KiB.
+ */
+function appendBounded(file, text, maxBytes = 128 * 1024) {
+  try {
+    if (existsSync(file) && statSync(file).size + text.length > maxBytes) {
+      try { renameSync(file, file + '.old'); } catch (error) { writeFileSync(file, '', 'utf8'); }
+    }
+    writeFileSync(file, text, { flag: 'a' });
+  } catch (error) { /* diagnostics only */ }
+}
+
 const HELLO_FILE = join(process.env.USERPROFILE || process.env.HOME || '.', '.dsh', 'notify-hello.log');
 const DUMP_FILE = join(process.env.USERPROFILE || process.env.HOME || '.', '.dsh', 'ui-dump.txt');
 /* The phone APK lives next to the plugin: `_android/build.ps1` copies it here and
@@ -957,7 +973,7 @@ function fireDesktopNotice(title, body, force) {
       .replace('__BODY__', escape(body))
       .replace('__FORCE__', force === true ? '$true' : '$false');
     const encoded = Buffer.from(script, 'utf16le').toString('base64');
-    try { writeFileSync(HELLO_FILE, new Date().toISOString() + ' notice ' + String(title) + ' | ' + String(body) + '\n', { flag: 'a' }); } catch (error) { /* best effort */ }
+    try { appendBounded(HELLO_FILE, new Date().toISOString() + ' notice ' + String(title) + ' | ' + String(body) + '\n'); } catch (error) { /* best effort */ }
     /* the toast carries the sound now; the host no longer spawns a player. */
     if (false) spawn('powershell.exe', [
       '-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encoded
@@ -1012,7 +1028,7 @@ function startNotifyHub(ctx) {
       request.on('data', function (chunk) { chunks.push(chunk); });
       request.on('end', function () {
         try {
-          writeFileSync(DUMP_FILE, '\n---- ' + new Date().toISOString() + ' ----\n' + Buffer.concat(chunks).toString('utf8') + '\n', { flag: 'a' });
+          appendBounded(DUMP_FILE, '\n---- ' + new Date().toISOString() + ' ----\n' + Buffer.concat(chunks).toString('utf8') + '\n', 256 * 1024);
         } catch (error) { /* best effort */ }
         response.writeHead(204);
         response.end();
@@ -1021,7 +1037,7 @@ function startNotifyHub(ctx) {
     }
     if (url.pathname.endsWith('/hello')) {
       try {
-        writeFileSync(HELLO_FILE, new Date().toISOString() + ' ' + request.url + '\n', { flag: 'a' });
+        appendBounded(HELLO_FILE, new Date().toISOString() + ' ' + request.url + '\n');
       } catch (error) { /* best effort */ }
       response.writeHead(204);
       response.end();
@@ -1053,7 +1069,7 @@ function startNotifyHub(ctx) {
       'x-accel-buffering': 'no'
     });
     try {
-      writeFileSync(HELLO_FILE, new Date().toISOString() + ' stream ua=' + JSON.stringify(request.headers['user-agent'] || '') + ' origin=' + JSON.stringify(request.headers.origin || '') + ' referer=' + JSON.stringify(request.headers.referer || '') + '\n', { flag: 'a' });
+      appendBounded(HELLO_FILE, new Date().toISOString() + ' stream ua=' + JSON.stringify(request.headers['user-agent'] || '') + ' origin=' + JSON.stringify(request.headers.origin || '') + ' referer=' + JSON.stringify(request.headers.referer || '') + '\n');
     } catch (error) { /* best effort */ }
     response.write(': connected\n\n');
     shared.streams.add(response);
