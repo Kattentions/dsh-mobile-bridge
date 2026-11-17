@@ -1,59 +1,59 @@
 {
-    "format":  1,
-    "title":  {
-                  "en":  "Katt mobile plugins",
-                  "zh":  "Katt 手机插件"
-              },
-    "description":  {
-                        "en":  "Mobile access to DeepSeek Harness.",
-                        "zh":  "DeepSeek Harness 的手机访问。"
-                    },
-    "metadata":  {
-                     "categories":  {
-                                        "remote":  {
-                                                       "title":  {
-                                                                     "en":  "Remote \u0026 Mobile",
-                                                                     "zh":  "远程与移动"
-                                                                 }
-                                                   }
-                                    }
-                 },
-    "plugins":  [
-                    {
-                        "name":  "dsh-mobile-bridge",
-                        "title":  {
-                                      "en":  "DSH Mobile Bridge",
-                                      "zh":  "DSH 手机桥"
-                                  },
-                        "description":  {
-                                            "en":  "LAN bridge for phones: QR pairing, cookie-isolated GUI proxy, APK download page and turn-end notification stream.",
-                                            "zh":  "手机访问 DSH 的局域网桥：扫码配对、隔离 Cookie 的 GUI 代理、APK 下载页和完成事件通知流。"
-                                        },
-                        "author":  "Kattentions",
-                        "homepage":  "https://github.com/Kattentions/dsh-mobile-bridge",
-                        "repository":  {
-                                           "url":  "https://github.com/Kattentions/dsh-mobile-bridge"
-                                       },
-                        "keywords":  [
-                                         "mobile",
-                                         "remote",
-                                         "pairing",
-                                         "lan",
-                                         "android",
-                                         "qr"
-                                     ],
-                        "category":  "remote",
-                        "versions":  [
-                                         {
-                                             "version":  "0.2.0",
-                                             "publishTimestamp":  1794827732,
-                                             "source":  {
-                                                            "type":  "git",
-                                                            "url":  "https://github.com/Kattentions/dsh-mobile-bridge.git",
-                                                            "commit":  "40c7447fd888c4c94a56b913d1621511ea006192"
-                                                        }
-                                         }
-                                     ]
-                    }
-                ]
+  "format": 1,
+  "title": {
+    "en": "Katt mobile plugins",
+    "zh": "Katt 手机插件"
+  },
+  "description": {
+    "en": "Mobile access to DeepSeek Harness.",
+    "zh": "DeepSeek Harness 的手机访问。"
+  },
+  "metadata": {
+    "categories": {
+      "remote": {
+        "title": {
+          "en": "Remote & Mobile",
+          "zh": "远程与移动"
+        }
+      }
+    }
+  },
+  "plugins": [
+    {
+      "name": "dsh-mobile-bridge",
+      "title": {
+        "en": "DSH Mobile Bridge",
+        "zh": "DSH 手机桥"
+      },
+      "description": {
+        "en": "LAN bridge for phones: QR pairing, cookie-isolated GUI proxy, APK download page and turn-end notification stream.",
+        "zh": "手机访问 DSH 的局域网桥：扫码配对、隔离 Cookie 的 GUI 代理、APK 下载页和完成事件通知流。"
+      },
+      "author": "Kattentions",
+      "homepage": "https://github.com/Kattentions/dsh-mobile-bridge",
+      "repository": {
+        "url": "https://github.com/Kattentions/dsh-mobile-bridge"
+      },
+      "keywords": [
+        "mobile",
+        "remote",
+        "pairing",
+        "lan",
+        "android",
+        "qr"
+      ],
+      "category": "remote",
+      "versions": [
+        {
+          "version": "0.2.1",
+          "publishTimestamp": 1794895645,
+          "source": {
+            "type": "git",
+            "url": "https://github.com/Kattentions/dsh-mobile-bridge.git",
+            "commit": "26bcf2f8b05629a4859a0bd1da1758b5aaff857f"
+          }
+        }
+      ]
+    }
+  ]
 }
