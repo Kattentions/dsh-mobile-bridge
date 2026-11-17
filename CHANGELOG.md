@@ -1,5 +1,10 @@
 # 变更记录
 
+## 0.4.13
+
+- 新增 `scripts/check-release.mjs`（`npm run check:release`）：核对 `package.json` 与市场 `index.json` 的版本是否一致，并检查发布必需文件（APK、version.json、vendor、两个检查脚本、双语文档）是否齐全。
+- 桥的客户端没有版本常量（版本来自宿主路由），所以脚本只对这两处；katt-browser 那份还会核对 `client.js` 的 VERSION。
+- 负向验证：故意造 9.9.9 vs 0.4.12 的包和索引，脚本正确报错并退出 1。
 ## 0.4.12
 
 - `package.json` 补 `main: index.js` 与 `engines.node >= 20`（宿主侧用到全局 fetch/WebSocket）。
