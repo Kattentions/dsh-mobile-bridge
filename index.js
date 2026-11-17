@@ -1001,7 +1001,7 @@ function startNotifyHub(ctx) {
     shared.latest = Object.assign({ seq: shared.latest.seq + 1, at: now }, payload);
     const frame = 'data: ' + JSON.stringify(shared.latest) + '\n\n';
     for (const stream of shared.streams) {
-      try { stream.write(frame); } catch (error) { shared.streamsdelete(stream); }
+      try { stream.write(frame); } catch (error) { shared.streams.delete(stream); }
     }
   };
 
@@ -1034,7 +1034,7 @@ function startNotifyHub(ctx) {
       return;
     }
     if (url.pathname.endsWith('/state')) {
-      const body = JSON.stringify({ streams: shared.streamssize, titles: titles.size, polls, pid: process.pid }, null, 2);
+      const body = JSON.stringify({ streams: shared.streams.size, titles: shared.titles.size, polls: shared.polls, pid: process.pid }, null, 2);
       response.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
       response.end(body);
       return;
@@ -1056,13 +1056,13 @@ function startNotifyHub(ctx) {
       writeFileSync(HELLO_FILE, new Date().toISOString() + ' stream ua=' + JSON.stringify(request.headers['user-agent'] || '') + ' origin=' + JSON.stringify(request.headers.origin || '') + ' referer=' + JSON.stringify(request.headers.referer || '') + '\n', { flag: 'a' });
     } catch (error) { /* best effort */ }
     response.write(': connected\n\n');
-    shared.streamsadd(response);
+    shared.streams.add(response);
     const ping = setInterval(() => {
       try { response.write(': ping\n\n'); } catch (error) { /* stream already gone */ }
     }, 20000);
     const close = () => {
       clearInterval(ping);
-      shared.streamsdelete(response);
+      shared.streams.delete(response);
       try { response.end(); } catch (error) { /* already closed */ }
     };
     /* Only the response lifetime matters: an IncomingMessage also emits 'close'
@@ -1079,13 +1079,14 @@ function startNotifyHub(ctx) {
     ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/__ink/dump', handler }))
   ];
 
+  /* Root sessions only: a child session's turn end should not notify the phone.
+     The session header carries the parent link, so use that instead of guessing. */
   const isRoot = (agent) => {
     try {
-      const service = ctx.get('agents');
-      if (!service || typeof service.roots !== 'function') return true;
-      const roots = service.roots();
-      if (!Array.isArray(roots)) return true;
-      return roots.some((candidate) => candidate === agent || (candidate && agent && candidate.id === agent.id));
+      const store = ctx.get('sessions');
+      const session = store && typeof store.get === 'function' && agent ? store.get(String(agent.id || agent.sessionId || '')) : undefined;
+      if (session && session.header && session.header.parentSession) return false;
+      return true;
     } catch (error) {
       return true;
     }
@@ -1095,19 +1096,19 @@ function startNotifyHub(ctx) {
     const id = agent && (agent.id || agent.sessionId);
     const key = id === undefined ? '' : String(id);
     let title = shared.titles.get(key) || '';
-    if (title === '') {
-      try {
-        const store = ctx.get('sessions');
-        const titlesService = ctx.get('sessionTitle');
-        const session = store && typeof store.get === 'function' ? store.get(key) : undefined;
-        const snapshot = session && titlesService && typeof titlesService.get === 'function'
-          ? titlesService.get(session)
-          : undefined;
-        if (typeof snapshot === 'string') title = snapshot;
-        else if (snapshot) title = String(snapshot.title || snapshot.text || snapshot.label || '');
-      } catch (error) { /* title is optional */ }
-    }
-    return { sessionId: key, title };
+    let cwd = '';
+    try {
+      const store = ctx.get('sessions');
+      const titlesService = ctx.get('sessionTitle');
+      const session = store && typeof store.get === 'function' ? store.get(key) : undefined;
+      if (session && session.header && typeof session.header.cwd === 'string') cwd = session.header.cwd;
+      const snapshot = session && titlesService && typeof titlesService.get === 'function'
+        ? titlesService.get(session)
+        : undefined;
+      if (title === '' && typeof snapshot === 'string') title = snapshot;
+      else if (title === '' && snapshot) title = String(snapshot.title || snapshot.text || snapshot.label || '');
+    } catch (error) { /* title is optional */ }
+    return { sessionId: key, title, cwd };
   };
 
   const send = (payload) => push(payload);
@@ -1138,7 +1139,7 @@ function startNotifyHub(ctx) {
     /* let the final assistant message paint before the toast fires */
     setTimeout(() => {
       fireDesktopNotice('DSH · 这一轮结束了', info.title !== '' ? info.title : (spent !== '' ? spent : '可以回来看结果了'));
-      send({ type: 'turn-end', sessionId: info.sessionId, title: info.title, at: Date.now() });
+      send({ type: 'turn-end', sessionId: info.sessionId, title: info.title, cwd: info.cwd, at: Date.now() });
     }, 350);
   }));
 
@@ -1148,7 +1149,7 @@ function startNotifyHub(ctx) {
     const info = describe(agent);
     setTimeout(() => {
       fireDesktopNotice('DSH · 这一轮出错了', info.title !== '' ? info.title : '打开窗口看看错误信息');
-      send({ type: 'turn-error', sessionId: info.sessionId, title: info.title, at: Date.now() });
+      send({ type: 'turn-error', sessionId: info.sessionId, title: info.title, cwd: info.cwd, at: Date.now() });
     }, 350);
   }));
 
@@ -1159,7 +1160,7 @@ function startNotifyHub(ctx) {
     for (const stream of [...shared.streams]) {
       try { stream.end(); } catch (error) { /* ignore */ }
     }
-    shared.streamsclear();
+    shared.streams.clear();
   };
 }
 

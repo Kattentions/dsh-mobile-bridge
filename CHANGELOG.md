@@ -1,5 +1,11 @@
 # 变更记录
 
+## 0.4.1
+
+- 修通知 hub 崩溃点：`shared.streams` 的 add/delete/clear 写错成 `streamsadd/streamsdelete/streamsclear`，客户端断流时会抛 TypeError；`/__ink/notify/state` 里引用了不存在的 `titles`/`polls`，访问即 500。
+- 根会话判定改用 session header 的 `parentSession`：子会话/团队成员的 turn-end 不再推到手机。
+- 通知负载补 `cwd`（工作区路径）和会话标题：手机上收到「这一轮结束了」能知道是哪个会话/工作区，后续 App 可以直接展示。
+
 ## 0.4.0
 
 - 手机能力反向暴露：新增 agent 工具 `phone_notify` / `phone_state`，命令经 `/__ink/phone/pull|result` 排队，App 的后台轮询取走并执行，执行完回执。
